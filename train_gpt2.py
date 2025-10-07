@@ -5,8 +5,9 @@ from torch.nn import functional as F
 import math
 import time
 import tiktoken 
-# device = 'cpu'
-device = 'mps' if torch.mps.is_available() else 'cpu'
+import matplotlib.pyplot as plt
+device = 'cpu'
+# device = 'mps' if torch.mps.is_available() else 'cpu'
 print(f"Using device: {device}\n")
 
 
@@ -183,44 +184,73 @@ class GPT(nn.Module):
 
         return model
 
+class DataLoaderLite:
+
+    def __init__(self,B:int,T:int,filename:str) -> None:
+        self.B = B
+        self.T = T
+
+        with open(filename,'r') as f:
+            text = f.read()
+
+        enc = tiktoken.get_encoding('gpt2')
+        tokens = enc.encode(text)
+        self.tokens = torch.tensor(tokens)
+
+        print(f"Loaded {len(self.tokens)} tokens")
+        print(f"1 Epoch = {len(self.tokens)// self.B*self.T} batches")
+
+        self.current_position = 0
+
+    def next_batch(self)-> tuple[torch.Tensor,torch.Tensor]:
+        
+        B,T = self.B, self.T
+
+        buf = self.tokens[self.current_position:self.current_position+(B*T)+1]
+        x = (buf[:-1]).view(B,T)
+        y = (buf[1:]).view(B,T)
+        
+        self.current_position += (B*T)
+
+        if self.current_position + (B*T)+1 >len(self.tokens):
+            self.current_position = 0
+
+        return (x , y)
+
 
 # -----------------------------------------------------------------------------
 
 num_return_sequences = 5
 max_length = 30
-
-enc = tiktoken.get_encoding('gpt2')
-
-with open('input.txt',"r") as f:
-    text = f.read()
-data = text[:1000]
-tokens = enc.encode(data)
-
-B,T = 4,32
-
-buf = torch.tensor(tokens[:B*T+1])
-x = buf[:-1].view(B,T)
-y = buf[1:].view(B,T)
-x,y = x.to(device),y.to(device)
+num_iters = 20
 
 model = GPT(GPTconfig())
 model.to(device)
-
-optim = torch.optim.AdamW(model.parameters(),lr=3e-4)
-
-logits,loss = model(x,y)
-print(f"Initial loss: {loss.item():.3f}")
+train_loader = DataLoaderLite(4,32,'input.txt')
 
 # optimise 
-for i in range(50):
+optim = torch.optim.AdamW(model.parameters(),lr=3e-4)
+
+lossi = []
+
+for i in range(num_iters):
+    x,y = train_loader.next_batch()
     optim.zero_grad()
     logits,loss = model(x,y)
     loss.backward()
-
     optim.step()
+    
+    lossi.append(loss.item())
     print(f"step: {i}, loss: {loss.item():.3f}")
 
+
 print(f"Final loss: {loss.item():.3f}")
+
+# plots
+plt.title(f"Loss visualised over {num_iters} iterations!")
+plt.xlabel('Steps')
+plt.ylabel('Loss')
+plt.plot(range(num_iters),lossi);plt.show()
 
 import sys; sys.exit(0)
 
