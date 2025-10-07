@@ -198,7 +198,7 @@ class DataLoaderLite:
         self.tokens = torch.tensor(tokens)
 
         print(f"Loaded {len(self.tokens)} tokens")
-        print(f"1 Epoch = {len(self.tokens)// self.B*self.T} batches")
+        print(f"1 Epoch = {len(self.tokens)//(self.B*self.T)} batches")
 
         self.current_position = 0
 
@@ -235,6 +235,7 @@ lossi = []
 
 for i in range(num_iters):
     x,y = train_loader.next_batch()
+    x,y = x.to(device),y.to(device)
     optim.zero_grad()
     logits,loss = model(x,y)
     loss.backward()
