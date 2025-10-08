@@ -111,6 +111,17 @@ class GPT(nn.Module):
         # weight sharing scheme
         self.transformer.wte.weight = self.lm_head.weight # type: ignore
 
+        #
+        self.apply(self._init_weights)
+
+    def _init_weights(self,module):
+        if isinstance(module,nn.Linear):
+            torch.nn.init.normal_(module.weight,mean=0.0,std=0.02) #The 0.2 is still consistent with the Normal Xavier Initialization i.e 1/sqroot(fan_in)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module,nn.Embedding):
+            torch.nn.init.normal_(module.weight,mean=0.0,std=0.02)
+
     def forward(self,idx,targets=None):
         B,T = idx.shape
         assert T <= self.config.block_size, f"Cannot forward sequence of lenght {T} when block size is {self.config.block_size}"
@@ -241,6 +252,7 @@ for i in range(num_iters):
     x,y = x.to(device),y.to(device)
     optim.zero_grad()
     logits,loss = model(x,y)
+    import code; code.interact(local=locals())
     loss.backward()
     optim.step()
     
