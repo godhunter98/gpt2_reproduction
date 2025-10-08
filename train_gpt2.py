@@ -108,6 +108,9 @@ class GPT(nn.Module):
         ))
         self. lm_head = nn.Linear(config.n_embd,config.vocab_size,bias=False)
 
+        # weight sharing scheme
+        self.transformer.wte.weight = self.lm_head.weight # type: ignore
+
     def forward(self,idx,targets=None):
         B,T = idx.shape
         assert T <= self.config.block_size, f"Cannot forward sequence of lenght {T} when block size is {self.config.block_size}"
@@ -222,11 +225,11 @@ class DataLoaderLite:
 
 num_return_sequences = 5
 max_length = 30
-num_iters = 20
+num_iters = 50
 
 model = GPT(GPTconfig())
 model.to(device)
-train_loader = DataLoaderLite(4,32,'input.txt')
+train_loader = DataLoaderLite(10,32,'input.txt')
 
 # optimise 
 optim = torch.optim.AdamW(model.parameters(),lr=3e-4)
