@@ -7,7 +7,7 @@ import time
 import tiktoken 
 import matplotlib.pyplot as plt
 device = 'cpu'
-# device = 'mps' if torch.mps.is_available() else 'cpu'
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f"Using device: {device}\n")
 
 
@@ -113,7 +113,7 @@ class GPT(nn.Module):
         self. lm_head = nn.Linear(config.n_embd,config.vocab_size,bias=False)
 
         # weight sharing scheme
-        self.transformer.wte.weight = self.lm_head.weight # type: ignore
+        self.lm_head.weight = self.transformer.wte.weight # type: ignore
 
         #
         self.apply(self._init_weights)
@@ -243,11 +243,11 @@ class DataLoaderLite:
 
 num_return_sequences = 5
 max_length = 30
-num_iters = 50
+num_iters = 20
 
 model = GPT(GPTconfig())
 model.to(device)
-train_loader = DataLoaderLite(10,32,'input.txt')
+train_loader = DataLoaderLite(16,256,'input.txt')
 
 # optimise 
 optim = torch.optim.AdamW(model.parameters(),lr=3e-4)
@@ -255,19 +255,35 @@ optim = torch.optim.AdamW(model.parameters(),lr=3e-4)
 lossi = []
 
 for i in range(num_iters):
+    t0 = time.perf_counter()
+
     x,y = train_loader.next_batch()
     x,y = x.to(device),y.to(device)
     optim.zero_grad()
+
     logits,loss = model(x,y)
-    import code; code.interact(local=locals())
+    # uncomment below do debug!
+    # import code; code.interact(local=locals()) 
     loss.backward()
     optim.step()
+
+    # waiting for the GPU/CPU to finish scheduled work!
+    if device == 'cuda':
+        torch.cuda.synchronize()
+    # elif device == 'cpu':
+    #     torch.cpu.synchronize()
+
+    t1 = time.perf_counter()
+    dt = (t1-t0) * 1000 # time diff in milliseconds
+    tokens_per_sec = (train_loader.B*train_loader.T) / (t1-t0)
     
     lossi.append(loss.item())
-    print(f"step: {i}, loss: {loss.item():.3f}")
+    print(f"step: {i}, loss: {loss.item():.4f}, dt: {dt:.2f}ms, tok/sec:{tokens_per_sec:.1f}")
 
 
 print(f"Final loss: {loss.item():.3f}")
+
+print(f"It took {time.perf_counter()-a} seconds to run {num_iters} iterations")
 
 # plots
 plt.title(f"Loss visualised over {num_iters} iterations!")
