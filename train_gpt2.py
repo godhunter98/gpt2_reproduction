@@ -247,6 +247,7 @@ num_iters = 20
 
 model = GPT(GPTconfig())
 model.to(device)
+torch.compile(model)
 train_loader = DataLoaderLite(16,256,'input.txt')
 
 # optimise 
@@ -254,12 +255,15 @@ optim = torch.optim.AdamW(model.parameters(),lr=3e-4)
 
 lossi = []
 
+a = time.perf_counter()
+
 for i in range(num_iters):
     t0 = time.perf_counter()
 
     x,y = train_loader.next_batch()
     x,y = x.to(device),y.to(device)
     optim.zero_grad()
+
 
     logits,loss = model(x,y)
     # uncomment below do debug!
