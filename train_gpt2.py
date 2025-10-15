@@ -226,6 +226,8 @@ class GPT(nn.Module):
 
         optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=(0.9, 0.95), eps=1e-8)
 
+        return optimizer
+
 
 class DataLoaderLite:
 
@@ -273,7 +275,7 @@ torch.compile(model)
 train_loader = DataLoaderLite(16,256,'input.txt')
 
 # optimise 
-optim = torch.optim.AdamW(model.parameters(),lr=3e-4,betas=(0.9,0.95),eps=1e-8)
+optim = model.configure_optimizers(weight_decay=0.1,learning_rate=6e-4,device=device)
 
 lossi = []
 
