@@ -6,6 +6,7 @@ import math
 import time
 import tiktoken 
 import matplotlib.pyplot as plt
+import inspect
 device = 'cpu'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f"Using device: {device}\n")
@@ -72,10 +73,9 @@ class CausalSelfAttention(nn.Module):
         att = att.masked_fill(self.tril[:,:,:T,:T]==0,float('-inf'))  
         att  = F.softmax(att,dim=-1)
         att = self.dropout(att)
-            # (B,T,n_head,n_head) @ (B,T,n_head,head_size) ->   (B,T,n_head,head_size)
-        y = att @ v 
-            # B,T,n_head,head_size -> B,T,C
-        y = y.transpose(1,2).contiguous().view(B,T,C)
+        y = att @ v # (B,T,n_head,n_head) @ (B,T,n_head,head_size) ->   (B,T,n_head,head_size)
+            
+        y = y.transpose(1,2).contiguous().view(B,T,C) # B,T,n_head,head_size -> B,T,C
 
         # This is our blender, wherein we mix the outputs of all heads before feeding into an MLP
         out = self.c_proj(y) 
@@ -204,6 +204,28 @@ class GPT(nn.Module):
                     sd[k].copy_(sd_hf[k])
 
         return model
+    
+    def configure_optimizers(self,weight_decay,learning_rate,device):
+        param_dict = {pn: p for pn, p in self.named_parameters()}
+        param_dict = {pn:p for pn, p in param_dict.items() if p.requires_grad}
+
+        decay_params = [p for n,p in param_dict.items() if p.dim() >=2]
+        non_decay_params = [p for n,p in param_dict.items() if p.dim() < 2]
+        optim_groups = [
+            {'params': decay_params, 'weight_decay':weight_decay},
+            {'params': non_decay_params, 'weight_decay': 0.0}
+        ]
+        num_decay_params = sum(p.numel() for p in decay_params)
+        num_non_decay_params = sum(p.numel() for p in non_decay_params)
+        print(f"num decayed paramtere tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
+        print(f"num non-decayed paramtere tensors: {len(non_decay_params)}, with {num_non_decay_params:,} parameters")
+
+        fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
+        used_fused = fused_available and 'cuda' in device
+        print(f"using fused AdamW: {used_fused}")
+
+        optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=(0.9, 0.95), eps=1e-8)
+
 
 class DataLoaderLite:
 
@@ -251,7 +273,7 @@ torch.compile(model)
 train_loader = DataLoaderLite(16,256,'input.txt')
 
 # optimise 
-optim = torch.optim.AdamW(model.parameters(),lr=3e-4)
+optim = torch.optim.AdamW(model.parameters(),lr=3e-4,betas=(0.9,0.95),eps=1e-8)
 
 lossi = []
 
@@ -269,8 +291,9 @@ for i in range(num_iters):
     # uncomment below do debug!
     # import code; code.interact(local=locals()) 
     loss.backward()
+    norm = torch.nn.utils.clip_grad_norm_(model.parameters(),1.0)
     optim.step()
-
+    
     # waiting for the GPU/CPU to finish scheduled work!
     if device == 'cuda':
         torch.cuda.synchronize()
@@ -282,7 +305,7 @@ for i in range(num_iters):
     tokens_per_sec = (train_loader.B*train_loader.T) / (t1-t0)
     
     lossi.append(loss.item())
-    print(f"step: {i}, loss: {loss.item():.4f}, dt: {dt:.2f}ms, tok/sec:{tokens_per_sec:.1f}")
+    print(f"step: {i} | loss: {loss.item():.4f} | norm:{norm:.4f} | dt: {dt:.2f}ms | tok/sec:{tokens_per_sec:.1f}")
 
 
 print(f"Final loss: {loss.item():.3f}")
