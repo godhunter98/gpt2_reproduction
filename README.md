@@ -1,4 +1,4 @@
-# GPT-2 Playground
+# GPT-2 Reproduction
 
 This repo contains a from-scratch PyTorch re-implementation of the GPT-2 architecture together with a lightweight training loop, basic sampling code, and a utility script for evaluating pretrained GPT-2 checkpoints on the HellaSwag benchmark. It is intentionally small, easy to read, and ideal for experimenting with tokenizer pipelines, architecture tweaks, and throughput measurements on your own text corpora.
 
